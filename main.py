@@ -23,7 +23,19 @@ def verify_signature(payload_body: bytes, signature_header: str, secret: str) ->
 @app.post("/webhook")
 async def github_webhook(request: Request):
     body = await request.body()
+    signature = request.headers.get("X-Hub-Signature-256", "")
+
+    if not verify_signature(body, signature, WEBHOOK_SECRET):
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
     event = request.headers.get("X-GitHub-Event")
-    logger.info(f"Received event: {event}")
-    logger.info(json.dumps(json.loads(body), indent=2)[:500])
+    payload = json.loads(body)
+
+    if event == "pull_request" and payload.get("action") == "closed" and payload["pull_request"].get("merged"):
+        pr = payload["pull_request"]
+        logger.info(f"Merged PR #{pr['number']} in {payload['repository']['full_name']}: {pr['title']}")
+        # Day 4: trigger diff extraction here
+    else:
+        logger.info(f"Ignored event: {event} / action: {payload.get('action')}")
+
     return {"status": "received"}

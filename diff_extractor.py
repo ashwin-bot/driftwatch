@@ -1,4 +1,5 @@
 import httpx
+import base64
 import re
 import tree_sitter_python as tspython
 from tree_sitter import Language, Parser
@@ -14,6 +15,14 @@ def get_pr_files(owner: str, repo: str, pr_number: int, token: str):
     )
     resp.raise_for_status()
     return resp.json()
+
+def get_blob_content(owner: str, repo: str, blob_sha: str, token: str) -> bytes:
+    resp = httpx.get(
+        f"https://api.github.com/repos/{owner}/{repo}/git/blobs/{blob_sha}",
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
+    )
+    resp.raise_for_status()
+    return base64.b64decode(resp.json()["content"])
 
 def changed_line_ranges(patch: str):
     """Parse a unified diff hunk header, return (start, end) line ranges in the NEW file."""

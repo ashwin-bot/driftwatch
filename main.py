@@ -6,6 +6,8 @@ import logging
 import os
 from fastapi import FastAPI, Request, HTTPException
 from dotenv import load_dotenv
+from github_auth import get_installation_token
+from diff_extractor import extract_changed_chunks
 
 load_dotenv()
 app = FastAPI()
@@ -13,6 +15,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("driftwatch")
 
 WEBHOOK_SECRET = os.environ["GITHUB_WEBHOOK_SECRET"]
+GITHUB_APP_ID = os.environ["GITHUB_APP_ID"]
+GITHUB_PRIVATE_KEY_PATH = os.environ["GITHUB_PRIVATE_KEY_PATH"]
+GITHUB_INSTALLATION_ID = os.environ["GITHUB_INSTALLATION_ID"]
 
 def verify_signature(payload_body: bytes, signature_header: str, secret: str) -> bool:
     if not signature_header:
@@ -33,8 +38,17 @@ async def github_webhook(request: Request):
 
     if event == "pull_request" and payload.get("action") == "closed" and payload["pull_request"].get("merged"):
         pr = payload["pull_request"]
+        owner = payload["repository"]["owner"]["login"]
+        repo = payload["repository"]["name"]
         logger.info(f"Merged PR #{pr['number']} in {payload['repository']['full_name']}: {pr['title']}")
-        # Day 4: trigger diff extraction here
+
+        try:
+            token = get_installation_token(GITHUB_APP_ID, GITHUB_PRIVATE_KEY_PATH, GITHUB_INSTALLATION_ID)
+            chunks = extract_changed_chunks(owner, repo, pr["number"], token)
+            for c in chunks:
+                logger.info(f"Changed {c['type']} '{c['name']}' in {c['file']} (lines {c['start_line']}-{c['end_line']})")
+        except Exception:
+            logger.exception(f"Failed to extract chunks for PR #{pr['number']}")
     else:
         logger.info(f"Ignored event: {event} / action: {payload.get('action')}")
 
